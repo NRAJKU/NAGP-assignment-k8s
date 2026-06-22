@@ -23,22 +23,19 @@ spec:
 
           env:
             - name: POSTGRES_DB
-              valueFrom:
-                configMapKeyRef:
-                  name: service-api-config
-                  key: DB_NAME
+              value: customerdb
 
             - name: POSTGRES_USER
               valueFrom:
-                configMapKeyRef:
-                  name: service-api-config
+                secretKeyRef:
+                  name: postgres-secret
                   key: DB_USERNAME
 
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: postgres-secret
-                  key: POSTGRES_PASSWORD
+                  key: DB_PASSWORD
 
           resources:
             requests:
@@ -76,7 +73,7 @@ spec:
       spec:
         accessModes:
           - ReadWriteOnce
-        storageClassName: gp3
+        storageClassName: gp2
         resources:
           requests:
             storage: 5Gi

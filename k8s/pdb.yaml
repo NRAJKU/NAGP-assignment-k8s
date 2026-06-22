@@ -4,8 +4,7 @@ metadata:
   name: service-api-pdb
   namespace: nagp-assignment
 spec:
-  minAvailable: 3
-
+  maxUnavailable: 1
   selector:
     matchLabels:
       app: service-api

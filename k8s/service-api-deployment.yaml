@@ -4,7 +4,7 @@ metadata:
   name: service-api
   namespace: nagp-assignment
 spec:
-  replicas: 4
+  replicas: 2
 
   strategy:
     type: RollingUpdate
@@ -22,9 +22,12 @@ spec:
         app: service-api
 
     spec:
+      terminationGracePeriodSeconds: 30
+
       containers:
         - name: service-api
-          image: YOUR_DOCKERHUB_USERNAME/nagp-assignment:YOUR_IMAGE_TAG
+          image: nraj/nagp-assignment:0.0.1
+          imagePullPolicy: Always
 
           ports:
             - containerPort: 8080
@@ -34,7 +37,25 @@ spec:
                 name: service-api-config
 
           env:
-            - name: DB_PASSWORD
+            - name: SPRING_R2DBC_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_USERNAME
+
+            - name: SPRING_R2DBC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_PASSWORD
+
+            - name: SPRING_FLYWAY_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_USERNAME
+
+            - name: SPRING_FLYWAY_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: postgres-secret
