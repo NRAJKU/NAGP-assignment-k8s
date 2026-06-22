@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: service-api-config
+  namespace: nagp-assignment
+data:
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: customerdb
+  DB_USERNAME: appuser
+  JAVA_TOOL_OPTIONS: "-Duser.timezone=UTC"

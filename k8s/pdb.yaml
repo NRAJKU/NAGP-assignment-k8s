@@ -1,0 +1,11 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: service-api-pdb
+  namespace: nagp-assignment
+spec:
+  minAvailable: 3
+
+  selector:
+    matchLabels:
+      app: service-api
