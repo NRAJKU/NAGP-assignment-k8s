@@ -238,42 +238,54 @@ Include the observed values collected during testing in the table below.
 | CPU      | 100m            |                |                   |
 | Memory   | 256Mi           |                |                   |
 
-## 6. Deployment Steps
+## 6. Deployment Procedure
 
-1. Build the application.
-
-```bash
-./gradlew clean build
-```
-
-2. Build the Docker image.
+### Create EKS Cluster
 
 ```bash
-docker build -t <dockerhub-user>/nagp-assignment:1.0.0 .
+eksctl create cluster -f infrastructure/eks/cluster.yaml
 ```
 
-3. Push the image to Docker Hub.
-
-```bash
-docker push <dockerhub-user>/nagp-assignment:1.0.0
-```
-
-4. Deploy Kubernetes resources.
+### Deploy Kubernetes Resources
 
 ```bash
 kubectl apply -f k8s/
 ```
 
-5. Verify deployment status.
+### Verify Deployment
 
 ```bash
 kubectl get all -n nagp-assignment
 ```
 
-6. Verify API access.
+### Retrieve Application URL
 
 ```bash
-curl https://<ingress-url>/api/customers
+kubectl get ingress -n nagp-assignment
+```
+
+### Verify Persistence
+
+```bash
+kubectl delete pod postgres-0 -n nagp-assignment
+```
+
+### Verify Self-Healing
+
+```bash
+kubectl delete pod <api-pod-name> -n nagp-assignment
+```
+
+### Verify HPA
+
+```bash
+kubectl get hpa -n nagp-assignment
+```
+
+### Verify Metrics
+
+```bash
+kubectl top pods -n nagp-assignment
 ```
 
 ## 7. Validation

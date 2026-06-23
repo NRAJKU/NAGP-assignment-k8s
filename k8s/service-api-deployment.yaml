@@ -26,7 +26,7 @@ spec:
 
       containers:
         - name: service-api
-          image: nraj/nagp-assignment:0.0.1
+          image: nraj/nagp-assignment:0.0.3
           imagePullPolicy: Always
 
           ports:
