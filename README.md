@@ -138,7 +138,7 @@ kubectl top pods -n nagp-assignment
 Recording Link:
 
 ```text
-<REPLACE_WITH_RECORDING_LINK>
+https://nagarro-my.sharepoint.com/:v:/p/neeraj_kumar08/IQD6gXI8n8cMQrqy3ikVBbKPAfUdMFbem6eOonCXgxpQnTA?e=m2REF0
 ```
 
 ## Assignment Requirement Mapping
