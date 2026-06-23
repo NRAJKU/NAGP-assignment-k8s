@@ -2,319 +2,169 @@
 
 ## 1. Requirement Understanding
 
-The objective of this assignment was to design, containerize and deploy a multi-tier application on Kubernetes consisting of a Service API tier and a Database tier.
+The assignment required deploying a multi-tier application on Kubernetes while demonstrating the operational characteristics expected from a modern cloud-native workload.
 
-The Service API exposes REST endpoints that retrieve data from a PostgreSQL database.
+From my perspective, the interesting part of the assignment was not simply getting containers running inside EKS, but showing how the platform behaves under normal operational events such as pod failures, rolling deployments, storage persistence and workload scaling.
 
-The solution addresses the following requirements:
+The solution therefore focuses on four areas:
 
-* External access to the Service API tier
-* Internal-only access to the Database tier
-* Rolling updates for the Service API tier
-* Self-healing for both tiers
-* Horizontal Pod Autoscaling for the Service API tier
-* Persistent storage for the Database tier
-* Externalized configuration using ConfigMaps
-* Secure handling of credentials using Secrets
-* Resource optimization using Kubernetes metrics
+* Reliable deployment of a stateless API tier.
+* Persistent management of a stateful PostgreSQL database.
+* Secure and predictable communication between application and database layers.
+* Cost-conscious infrastructure choices appropriate for a small workload.
+
+The final implementation demonstrates:
+
+* External access to the application through an AWS Application Load Balancer.
+* Internal-only database access through Kubernetes services.
+* Self-healing of both stateless and stateful workloads.
+* Persistent storage surviving pod recreation.
+* Rolling deployments.
+* Horizontal Pod Autoscaling.
+* Externalized configuration and secret management.
+* Resource sizing aligned with the scale of the workload.
+
+---
 
 ## 2. Assumptions
 
-The following assumptions were made during implementation:
+A few assumptions were made during implementation.
 
-* AWS was used as the cloud platform.
-* The solution was deployed in the `ap-south-1` region.
-* Amazon EKS was used as the Kubernetes platform.
-* The cluster consisted of two worker nodes.
-* AWS Load Balancer Controller was installed to support Ingress.
-* Metrics Server was installed to support Horizontal Pod Autoscaler.
-* Amazon EBS CSI Driver was available for dynamic volume provisioning.
-* The workload was intended for demonstration purposes and not for production use.
-* The database did not require high availability or replication.
+The solution is intended as a demonstration environment rather than a production deployment. Because of that, I prioritized simplicity and operational clarity over high-availability database architectures.
+
+A single PostgreSQL instance was considered sufficient since database replication and disaster recovery were not part of the assignment requirements.
+
+AWS was selected as the target cloud platform and Amazon EKS was used as the managed Kubernetes offering. Docker Hub was used as the image registry to keep the deployment process straightforward and reproducible.
+
+The expected workload is relatively small. The API exposes a simple customer retrieval service and does not perform CPU-intensive processing, which allowed the cluster to be sized conservatively.
+
+---
 
 ## 3. Solution Overview
 
-### 3.1 Technology Stack
+The application consists of a Spring Boot 3.5 service built on WebFlux and a PostgreSQL 16 database.
 
-| Component            | Technology                   |
-| -------------------- | ---------------------------- |
-| Cloud Platform       | AWS                          |
-| Kubernetes Platform  | Amazon EKS                   |
-| Programming Language | Java 17                      |
-| Framework            | Spring Boot 3.5.x            |
-| Web Framework        | Spring WebFlux               |
-| Database Access      | Spring Data R2DBC            |
-| Database             | PostgreSQL 16                |
-| Database Migration   | Flyway                       |
-| Metrics              | Micrometer and Prometheus    |
-| Containerization     | Docker                       |
-| Container Registry   | Docker Hub                   |
-| Ingress              | AWS Load Balancer Controller |
-| Storage              | Amazon EBS gp3               |
+One design choice worth calling out is the use of an end-to-end reactive stack. The API layer uses WebFlux together with R2DBC instead of traditional JDBC. While this application is small, the reactive model allows the service tier to handle concurrent requests efficiently without requiring a large thread pool. This aligns well with the FinOps goal of running on relatively small worker nodes.
 
-### 3.2 Architecture
+Database schema management is handled through Flyway migrations. The application automatically initializes the schema and seed data during startup, ensuring a repeatable deployment process across environments.
 
-```
-┌───────────────────────────────────────────────────────────────────────────────┐
-│                           AWS Cloud (ap-south-1)                              │
-│                                                                               │
-│  Internet                                                                     │
-│      │                                                                        │
-│      ▼                                                                        │
-│  ┌───────────────────────────────┐                                            │
-│  │ Application Load Balancer     │                                            │
-│  └───────────────┬───────────────┘                                            │
-│                  │                                                            │
-│                  ▼                                                            │
-│  ┌─────────────────────────────────────────────────────────────────────────┐  │
-│  │                  Amazon EKS Cluster - nagp-assignment                   │  │
-│  │                                                                         │  │
-│  │  ┌───────────────────────────────┐                                      │  │
-│  │  │ Ingress                       │                                      │  │
-│  │  └───────────────┬───────────────┘                                      │  │
-│  │                  │                                                      │  │
-│  │                  ▼                                                      │  │
-│  │  ┌───────────────────────────────┐                                      │  │
-│  │  │ Service API Service           │                                      │  │
-│  │  │ Type: ClusterIP               │                                      │  │
-│  │  └───────────────┬───────────────┘                                      │  │
-│  │                  │                                                      │  │
-│  │                  ▼                                                      │  │
-│  │  ┌───────────────────────────────────────────────────────────────────┐  │  │
-│  │  │ Service API Deployment                                            │  │  │
-│  │  │ Replicas: 4                                                       │  │  │
-│  │  │                                                                   │  │  │
-│  │  │  ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐                   │  │  │
-│  │  │  │ Pod-1  │  │ Pod-2  │  │ Pod-3  │  │ Pod-4  │                   │  │  │
-│  │  │  └────┬───┘  └────┬───┘  └────┬───┘  └────┬───┘                   │  │  │
-│  │  └───────┼───────────┼───────────┼───────────┼───────────────────────┘  │  │
-│  │          │           │           │           │                          │  │
-│  │          └───────────┴───────────┴───────────┘                          │  │
-│  │                              │                                          │  │
-│  │                              ▼                                          │  │
-│  │  ┌───────────────────────────────┐                                      │  │
-│  │  │ PostgreSQL Service            │                                      │  │
-│  │  │ Type: ClusterIP               │                                      │  │
-│  │  └───────────────┬───────────────┘                                      │  │
-│  │                  │                                                      │  │
-│  │                  ▼                                                      │  │
-│  │  ┌───────────────────────────────┐                                      │  │
-│  │  │ PostgreSQL StatefulSet        │                                      │  │
-│  │  │ Replicas: 1                   │                                      │  │
-│  │  │                               │                                      │  │
-│  │  │        ┌─────────────┐        │                                      │  │
-│  │  │        │ postgres-0  │        │                                      │  │
-│  │  │        └──────┬──────┘        │                                      │  │
-│  │  └───────────────┼───────────────┘                                      │  │
-│  │                  │                                                      │  │
-│  │                  ▼                                                      │  │
-│  │  ┌───────────────────────────────┐                                      │  │
-│  │  │ Persistent Volume Claim       │                                      │  │
-│  │  │ Storage: 5 GiB                │                                      │  │
-│  │  └───────────────┬───────────────┘                                      │  │
-│  └──────────────────┼──────────────────────────────────────────────────────┘  │
-│                     │                                                         │
-│                     ▼                                                         │
-│           ┌───────────────────────────────┐                                   │
-│           │ Amazon EBS Volume (gp3)       │                                   │
-│           └───────────────────────────────┘                                   │
-└───────────────────────────────────────────────────────────────────────────────┘
+The deployed architecture is intentionally simple:
+
+```text
+Internet
+   |
+AWS Application Load Balancer
+   |
+Kubernetes Ingress
+   |
+Service API Deployment
+   |
+PostgreSQL Service
+   |
+PostgreSQL StatefulSet
+   |
+Persistent Volume
 ```
 
-### 3.3 Service API Tier
+From an infrastructure perspective, the solution uses:
 
-The Service API tier was implemented using Spring Boot WebFlux with a reactive programming model.
+* Amazon EKS as the Kubernetes control plane.
+* AWS Load Balancer Controller for ingress management.
+* PostgreSQL deployed as a StatefulSet.
+* Persistent storage backed by Amazon EBS.
+* Horizontal Pod Autoscaler for workload scaling.
+* ConfigMaps and Secrets for runtime configuration.
 
-The application exposes REST endpoints that retrieve customer data from PostgreSQL.
+A conscious decision was made to keep PostgreSQL internal to the cluster. Only the API tier is exposed externally. This follows a common production pattern where database access is restricted to trusted workloads rather than exposed directly.
 
-The implementation includes:
+---
 
-* Reactive database access using R2DBC
-* Database connection pooling
-* Health endpoints for Kubernetes probes
-* Prometheus metrics
-* Graceful shutdown support
-* Externalized configuration using ConfigMaps and Secrets
+## 4. Justification for the Resources Utilized
 
-### 3.4 Database Tier
+Resource sizing was driven primarily by workload characteristics and cost efficiency rather than maximizing performance.
 
-The database tier uses PostgreSQL deployed as a StatefulSet.
+### EKS Worker Nodes
 
-The implementation includes:
+The cluster runs on two `t3.small` worker nodes.
 
-* Persistent storage using Amazon EBS
-* Automatic recovery after pod deletion
-* Internal-only access through a ClusterIP service
-* Database schema management using Flyway
-* Seed data managed through versioned migrations
+For a workload of this size, larger instances would provide little practical benefit while increasing infrastructure cost. The selected node size was sufficient to run:
 
-### 3.5 Kubernetes Resources
+* Kubernetes system components.
+* AWS Load Balancer Controller.
+* Metrics Server.
+* PostgreSQL.
+* Multiple API replicas.
 
-| Resource                | Purpose                         |
-| ----------------------- | ------------------------------- |
-| Namespace               | Resource isolation              |
-| ConfigMap               | Non-sensitive configuration     |
-| Secret                  | Database credentials            |
-| Deployment              | Service API management          |
-| StatefulSet             | Database management             |
-| Service                 | Service discovery               |
-| Ingress                 | External access                 |
-| HorizontalPodAutoscaler | Automatic scaling               |
-| NetworkPolicy           | Database access restriction     |
-| PodDisruptionBudget     | Availability during maintenance |
+During testing, the cluster was intentionally kept small enough to expose scheduling constraints and autoscaling behaviour, which provided useful validation of the deployment configuration.
 
-## 4. Requirement Traceability
+### Service API Resources
 
-| Requirement                       | Implementation                             |
-| --------------------------------- | ------------------------------------------ |
-| External API access               | Ingress with AWS Application Load Balancer |
-| Internal database access          | ClusterIP Service and NetworkPolicy        |
-| Four API pods                     | Deployment replicas                        |
-| One database pod                  | StatefulSet replicas                       |
-| Rolling updates                   | Deployment strategy                        |
-| Self-healing                      | Deployment and StatefulSet controllers     |
-| Persistent storage                | EBS-backed Persistent Volume               |
-| Externalized configuration        | ConfigMap                                  |
-| Secure password management        | Secret                                     |
-| Service discovery without Pod IPs | Kubernetes Services                        |
-| Horizontal Pod Autoscaling        | HPA                                        |
-| CPU and memory limits             | Resource requests and limits               |
-| Database seed data                | Flyway migrations                          |
+The API tier uses relatively conservative resource requests and limits.
 
-## 5. Resource Justification
+The service performs lightweight database operations and spends most of its time waiting on I/O rather than consuming CPU. Restricting the container footprint improves node utilization and allows more efficient pod placement.
 
-### 5.1 Compute Resources
+Because the application uses WebFlux and R2DBC, it can sustain concurrent requests without requiring large thread pools or excessive memory allocation.
 
-The Service API tier was configured with the following resources:
+### PostgreSQL Resources
 
-| Resource | Request | Limit |
-| -------- | ------- | ----- |
-| CPU      | 100m    | 500m  |
-| Memory   | 256Mi   | 512Mi |
+Although the database workload is modest, PostgreSQL behaves very differently from the API tier.
 
-These values provided sufficient capacity for the expected workload while preventing resource overconsumption.
+Unlike a stateless service, PostgreSQL benefits from memory availability for caching and query execution. For a production deployment I would allocate substantially more memory and separate the database onto dedicated infrastructure.
 
-### 5.2 Storage
+For this assignment, the selected resource profile provides enough capacity for schema migrations, seed data loading and application queries while remaining cost-effective.
 
-A 5 GiB Amazon EBS gp3 volume was allocated for PostgreSQL persistence.
+### Persistent Storage
 
-The gp3 storage class was selected because it provides lower cost and independent scaling of storage and performance.
+PostgreSQL storage is backed by an EBS-backed Persistent Volume Claim.
 
-### 5.3 Node Configuration
+The objective was not raw storage performance but persistence. The important requirement was ensuring that customer data survives pod deletion and StatefulSet recreation events. This behavior was validated during testing by deleting the PostgreSQL pod and confirming that previously inserted data remained available after recovery.
 
-The EKS cluster used two `t3.small` worker nodes to support:
+### Autoscaling
 
-* Four API pods
-* One database pod
-* Kubernetes system components
+Horizontal Pod Autoscaling was included primarily to demonstrate platform elasticity.
 
-### 5.4 FinOps Considerations
+The API deployment scales based on CPU utilization and allows additional replicas to be created when demand increases. While the application workload is small, enabling HPA demonstrates how the deployment can adapt to changing traffic patterns without manual intervention.
 
-The following cost optimization measures were implemented:
+---
 
-1. Resource requests and limits were configured to avoid over-provisioning.
-2. Horizontal Pod Autoscaler was used to scale the Service API tier based on demand.
-3. Amazon EBS gp3 volumes were used instead of gp2.
-4. Small worker node instances were selected for the demonstration environment.
-5. The cluster was deleted after validation to avoid unnecessary costs.
+## 5. Operational Validation
 
-### 5.5 Resource Optimization Based on Metrics
+Rather than treating deployment as the finish line, I validated a number of common operational scenarios.
 
-Resource utilization was monitored using Kubernetes metrics.
+### API Tier Self-Healing
 
-Commands used:
+Service API pods were manually deleted to verify that the Deployment controller recreated healthy replacements automatically.
 
-```bash
-kubectl top pods -n nagp-assignment
-kubectl top nodes
-```
+The application remained available throughout the recovery process.
 
-Based on observed utilization, CPU and memory requests were adjusted to align with actual workload requirements.
+### Database Recovery
 
-Include the observed values collected during testing in the table below.
+The PostgreSQL pod was deleted and recreated through the StatefulSet controller.
 
-| Resource | Initial Request | Observed Usage | Optimized Request |
-| -------- | --------------- | -------------- | ----------------- |
-| CPU      | 100m            |                |                   |
-| Memory   | 256Mi           |                |                   |
+The key validation point was ensuring that data remained intact after recovery. Because the database volume is externalized through a Persistent Volume Claim, data survived pod replacement as expected.
 
-## 6. Deployment Procedure
+### Rolling Deployments
 
-### Create EKS Cluster
+Application updates were deployed through Kubernetes rolling updates.
 
-```bash
-eksctl create cluster -f infrastructure/eks/cluster.yaml
-```
+This verified that new application versions could be introduced without requiring a full service outage and also highlighted the impact of resource constraints when running on a small cluster.
 
-### Deploy Kubernetes Resources
+### Database Initialization
 
-```bash
-kubectl apply -f k8s/
-```
+Flyway migrations were validated by deploying against a clean database and confirming automatic creation of schema objects and seed data.
 
-### Verify Deployment
+This ensures that new environments can be provisioned consistently without manual database setup.
 
-```bash
-kubectl get all -n nagp-assignment
-```
+### Horizontal Pod Autoscaler
 
-### Retrieve Application URL
+The HPA configuration was validated using generated load. Additional replicas were created automatically once utilization thresholds were exceeded and scaled back down when demand decreased.
 
-```bash
-kubectl get ingress -n nagp-assignment
-```
+---
 
-### Verify Persistence
+## 6. Conclusion
 
-```bash
-kubectl delete pod postgres-0 -n nagp-assignment
-```
+The final solution delivers a complete Kubernetes deployment of a multi-tier application on Amazon EKS while demonstrating the operational capabilities requested in the assignment.
 
-### Verify Self-Healing
+Beyond simply deploying containers, the implementation validates persistence, self-healing, rolling updates, autoscaling and secure service-to-service communication. Resource choices were intentionally conservative to align with FinOps principles while still providing sufficient capacity for the workload.
 
-```bash
-kubectl delete pod <api-pod-name> -n nagp-assignment
-```
-
-### Verify HPA
-
-```bash
-kubectl get hpa -n nagp-assignment
-```
-
-### Verify Metrics
-
-```bash
-kubectl top pods -n nagp-assignment
-```
-
-## 7. Validation
-
-The following scenarios were verified:
-
-* API access through Ingress
-* Database connectivity
-* Rolling updates
-* API pod self-healing
-* Database pod self-healing
-* Data persistence after database pod recreation
-* Horizontal Pod Autoscaler functionality
-
-## 8. Deliverables
-
-The repository includes:
-
-* Application source code
-* Dockerfile
-* Kubernetes manifests
-* Flyway migrations
-* README
-* Assignment documentation
-
-The following items are provided separately:
-
-* Git repository URL
-* Docker Hub image URL
-* Service API endpoint
-* Screen recording demonstrating deployment, self-healing, persistence, rolling updates and FinOps considerations
-  }
+If this system were evolving beyond a demonstration environment, the next areas I would address would be database high availability, observability expansion, automated CI/CD pipelines and stronger ingress security controls. For the scope of this assignment, however, the current implementation satisfies the functional and operational requirements while remaining intentionally simple and cost-conscious.

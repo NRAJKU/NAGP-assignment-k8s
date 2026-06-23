@@ -9,7 +9,7 @@ spec:
     kind: Deployment
     name: service-api
 
-  minReplicas: 2
+  minReplicas: 4
   maxReplicas: 10
 
   metrics:
