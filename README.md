@@ -27,13 +27,7 @@ Image Tag:
 Application Load Balancer URL:
 
 ```text
-<REPLACE_AFTER_INGRESS_DEPLOYMENT>
-```
-
-Example:
-
-```text
-http://<alb-dns-name>/api/customers
+http://k8s-nagpassi-servicea-1df60cbb95-1917124674.ap-south-1.elb.amazonaws.com/api/customers
 ```
 
 ## Deployment Architecture
@@ -42,7 +36,7 @@ Internet
 → AWS Application Load Balancer
 → Kubernetes Ingress
 → Service API Service
-→ Service API Deployment (4 Pods)
+→ Service API Deployment (2 Pods)
 → PostgreSQL Service
 → PostgreSQL StatefulSet
 → Amazon EBS Persistent Volume

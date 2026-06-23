@@ -4,7 +4,7 @@ metadata:
   name: service-api-config
   namespace: nagp-assignment
 data:
-  DB_HOST: postgres
+  DB_HOST: postgres-service
   DB_PORT: "5432"
   DB_NAME: customerdb
   JAVA_TOOL_OPTIONS: "-Duser.timezone=UTC"
